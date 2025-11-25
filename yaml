@@ -1,0 +1,49 @@
+ How It Works
+
+- On startup, the program loads all bus data from `buses.json`
+- If the file doesn't exist, it starts with a fresh system
+- Each bus contains:
+  - `bus_id`
+  - `source`
+  - `destination`
+  - `date`
+  - `fare`
+  - `40-seat list` (booked/free + passenger names)
+- Bookings update the JSON file immediately
+ 📸 Seat Layout Example
+
+  1   2   3   4
+  5   6   7   8
+  9  10  11  12
+ 13  14  15  16
+ ...
+ X = booked
+ Numbers = seats available
+
+ Technologies Used
+
+- **Python 3**
+- **JSON storage**
+- Basic console UI (no external libraries)
+ Future Enhancements (Optional)
+
+- Use SQLite database
+- Add admin login system
+- Multi-seat booking at once
+- GUI using Tkinter
+- Web version using Flask/Django
+- Export passenger list to CSV
+
+
+
+ License
+
+This project is open-source and free to use for educational purposes.
+
+ Author
+
+Developed by ananthu krishna cu
+For academic/project use.
+
+
+
