@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""
+bus_booking.py
+Simple Bus Ticket Booking System (console, JSON-persistent)
+Python 3.7+
+"""
+
+import json
+import os
+from typing import List, Dict
+
+DATAFILE = "buses.json"
+MAX_SEATS = 40
+
+def safe_input(prompt=""):
+    try:
+        return input(prompt)
+    except EOFError:
+        return ""
+
+class Bus:
+    def __init__(self, bus_id: int, source: str, dest: str, date: str, fare: int):
+        self.bus_id = int(bus_id)
+        self.source = source
+        self.dest = dest
+        self.date = date  # store as string like "2025-11-25"
+        self.fare = int(fare)
+        # seats: list of dicts { "seat": int, "booked": bool, "passenger": str or "" }
+        self.seats = [{"seat": i+1, "booked": False, "passenger": ""} for i in range(MAX_SEATS)]
+
+    def to_dict(self) -> Dict:
+        return {
+            "bus_id": self.bus_id,
+            "source": self.source,
+            "dest": self.dest,
+            "date": self.date,
+            "fare": self.fare,
+            "seats": self.seats
+        }
+
+    @staticmethod
+    def from_dict(d: Dict):
+        b = Bus(d["bus_id"], d["source"], d["dest"], d["date"], d["fare"])
+        # Validate seats shape and copy
+        if "seats" in d and isinstance(d["seats"], list):
+            # allow older files with fewer seats but adjust to MAX_SEATS
+            seats = d["seats"][:MAX_SEATS]
+            # normalize each seat dict
+            new_seats = []
+            for i in range(MAX_SEATS):
+                if i < len(seats):
+                    s = seats[i]
+                    new_seats.append({
+                        "seat": i+1,
+                        "booked": bool(s.get("booked", False)),
+                        "passenger": s.get("passenger", "") or ""
+                    })
+                else:
+                    new_seats.append({"seat": i+1, "booked": False, "passenger": ""})
+            b.seats = new_seats
+        return b
+
+class BookingSystem:
+    def __init__(self):
+        self.buses: List[Bus] = []
+        self.load()
+
+    def save(self):
+        try:
+            with open(DATAFILE, "w", encoding="utf-8") as f:
+                json.dump([b.to_dict() for b in self.buses], f, indent=2)
+        except Exception as e:
+            print("Error saving data:", e)
+
+    def load(self):
+        if not os.path.exists(DATAFILE):
+            self.buses = []
+            return
+        try:
+            with open(DATAFILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.buses = [Bus.from_dict(d) for d in data]
+        except Exception as e:
+            print("Error loading data, starting fresh:", e)
+            self.buses = []
+
+    def find_index(self, bus_id: int):
+        for i, b in enumerate(self.buses):
+            if b.bus_id == bus_id:
+                return i
+        return -1
+
+    def add_bus(self):
+        try:
+            bus_id = int(safe_input("Enter bus id (integer): ").strip())
+        except ValueError:
+            print("Invalid bus id.")
+            return
+        if self.find_index(bus_id) != -1:
+            print("Bus with this ID already exists.")
+            return
+        source = safe_input("Enter source: ").strip()
+        dest = safe_input("Enter destination: ").strip()
+        date = safe_input("Enter date (YYYY-MM-DD): ").strip()
+        try:
+            fare = int(safe_input("Enter fare (integer): ").strip())
+        except ValueError:
+            print("Invalid fare.")
+            return
+        b = Bus(bus_id, source, dest, date, fare)
+        self.buses.append(b)
+        self.save()
+        print("Bus added successfully.")
+
+    def list_buses(self):
+        if not self.buses:
+            print("No buses available.")
+            return
+        print(f"{'ID':<6}{'Source':<15}{'->':<3}{'Destination':<15}{'Date':<12}{'Fare':<6}{'FreeSeats':<10}")
+        for b in self.buses:
+            free = sum(1 for s in b.seats if not s["booked"])
+            print(f"{b.bus_id:<6}{b.source[:14]:<15}{'->':<3}{b.dest[:14]:<15}{b.date:<12}{b.fare:<6}{free:<10}")
+
+    def show_seat_layout(self, bus_id):
+        idx = self.find_index(bus_id)
+        if idx == -1:
+            print("Bus not found.")
+            return
+        b = self.buses[idx]
+        print(f"Seat layout for Bus {b.bus_id} — {b.source} -> {b.dest} on {b.date} (Fare: {b.fare})")
+        # Print seats 1..40 in rows of 4 (or 5) — choose 4 for clearer layout
+        per_row = 4
+        for i in range(MAX_SEATS):
+            s = b.seats[i]
+            if s["booked"]:
+                mark = "X"  # booked
+            else:
+                mark = str(s["seat"])
+            print(f"{mark:>3}", end=" ")
+            if (i+1) % per_row == 0:
+                print()
+        print("\nX = booked. Numbers = available seat numbers.")
+
+    def book_seat(self, bus_id):
+        idx = self.find_index(bus_id)
+        if idx == -1:
+            print("Bus not found.")
+            return
+        b = self.buses[idx]
+        try:
+            seat_no = int(safe_input(f"Enter seat number to book (1-{MAX_SEATS}): ").strip())
+        except ValueError:
+            print("Invalid seat number.")
+            return
+        if seat_no < 1 or seat_no > MAX_SEATS:
+            print("Seat number out of range.")
+            return
+        seat = b.seats[seat_no-1]
+        if seat["booked"]:
+            print("Seat already booked.")
+            return
+        name = safe_input("Enter passenger name: ").strip()
+        if not name:
+            print("Passenger name cannot be empty.")
+            return
+        seat["booked"] = True
+        seat["passenger"] = name
+        self.save()
+        print(f"Seat {seat_no} successfully booked for {name}. Fare: {b.fare}")
+
+    def cancel_booking(self, bus_id):
+        idx = self.find_index(bus_id)
+        if idx == -1:
+            print("Bus not found.")
+            return
+        b = self.buses[idx]
+        try:
+            seat_no = int(safe_input(f"Enter seat number to cancel (1-{MAX_SEATS}): ").strip())
+        except ValueError:
+            print("Invalid seat number.")
+            return
+        if seat_no < 1 or seat_no > MAX_SEATS:
+            print("Seat number out of range.")
+            return
+        seat = b.seats[seat_no-1]
+        if not seat["booked"]:
+            print("Seat is already free.")
+            return
+        confirm = safe_input(f"Cancel booking for {seat['passenger']} on seat {seat_no}? (y/n): ").strip().lower()
+        if confirm != "y":
+            print("Cancellation aborted.")
+            return
+        seat["booked"] = False
+        seat["passenger"] = ""
+        self.save()
+        print(f"Booking for seat {seat_no} cancelled.")
+
+    def view_passengers(self, bus_id):
+        idx = self.find_index(bus_id)
+        if idx == -1:
+            print("Bus not found.")
+            return
+        b = self.buses[idx]
+        print(f"Passengers on Bus {b.bus_id}:")
+        any_booked = False
+        for s in b.seats:
+            if s["booked"]:
+                any_booked = True
+                print(f"Seat {s['seat']:2}: {s['passenger']}")
+        if not any_booked:
+            print("No passengers booked yet.")
+
+    def run(self):
+        while True:
+            print("\n=== Bus Ticket Booking System ===")
+            print("1. Add bus")
+            print("2. List buses")
+            print("3. Show seat layout")
+            print("4. Book seat")
+            print("5. Cancel booking")
+            print("6. View passengers for a bus")
+            print("7. Exit")
+            choice = safe_input("Choose (1-7): ").strip()
+            if choice == "1":
+                self.add_bus()
+            elif choice == "2":
+                self.list_buses()
+            elif choice == "3":
+                try:
+                    bid = int(safe_input("Enter bus id: ").strip())
+                    self.show_seat_layout(bid)
+                except ValueError:
+                    print("Invalid bus id.")
+            elif choice == "4":
+                try:
+                    bid = int(safe_input("Enter bus id: ").strip())
+                    self.book_seat(bid)
+                except ValueError:
+                    print("Invalid bus id.")
+            elif choice == "5":
+                try:
+                    bid = int(safe_input("Enter bus id: ").strip())
+                    self.cancel_booking(bid)
+                except ValueError:
+                    print("Invalid bus id.")
+            elif choice == "6":
+                try:
+                    bid = int(safe_input("Enter bus id: ").strip())
+                    self.view_passengers(bid)
+                except ValueError:
+                    print("Invalid bus id.")
+            elif choice == "7":
+                print("Goodbye — saving data.")
+                self.save()
+                break
+            else:
+                print("Invalid choice. Enter 1-7.")
+
+if __name__ == "__main__":
+    system = BookingSystem()
+    system.run()
